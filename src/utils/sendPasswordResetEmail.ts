@@ -14,53 +14,64 @@ export async function sendPasswordResetEmail(
     return;
   }
 
-  const subject = "Redefinição de Senha - Avante Nutri";
-  const html = `
-<!DOCTYPE html>
+  const subject = "Redefinição de Senha - <BRAND_NAME>";
+  const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Redefinição de Senha</title>
+    <title>Redefinição de Senha - <BRAND_NAME></title>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             line-height: 1.6;
-            color: #333;
+            color: #1a202c;
             margin: 0;
             padding: 0;
-            background-color: #f8fafc;
+            background-color: #f7fafc;
         }
         .container {
             max-width: 600px;
             margin: 0 auto;
             background: #ffffff;
-            border-radius: 12px;
+            border-radius: 16px;
             overflow: hidden;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
         }
         .header {
-            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-            padding: 40px 30px;
+            background: linear-gradient(135deg, #6D28D9 0%, #4C1D95 100%);
+            padding: 30px 40px;
             text-align: center;
             color: white;
+            position: relative;
         }
         .logo {
-            font-size: 28px;
-            font-weight: bold;
-            margin-bottom: 10px;
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 15px;
+            letter-spacing: -0.5px;
+        }
+        .tagline {
+            font-size: 16px;
+            font-weight: 400;
+            opacity: 0.9;
+            max-width: 400px;
+            margin: 0 auto;
         }
         .content {
-            padding: 40px 30px;
+            padding: 45px 35px;
         }
         .greeting {
-            font-size: 18px;
-            margin-bottom: 20px;
-            color: #374151;
+            font-size: 20px;
+            margin-bottom: 25px;
+            color: #2d3748;
+            font-weight: 600;
         }
         .message {
             font-size: 16px;
-            color: #6b7280;
+            color: #4a5568;
             margin-bottom: 30px;
         }
         .button-container {
@@ -69,78 +80,120 @@ export async function sendPasswordResetEmail(
         }
         .reset-button {
             display: inline-block;
-            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            background: linear-gradient(135deg, #6D28D9 0%, #4C1D95 100%);
             color: white;
             text-decoration: none;
-            padding: 16px 32px;
-            border-radius: 8px;
+            padding: 18px 40px;
+            border-radius: 10px;
             font-weight: 600;
             font-size: 16px;
             transition: all 0.3s ease;
-            box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);
+            box-shadow: 0 4px 12px rgba(109, 40, 217, 0.25);
+            letter-spacing: 0.5px;
         }
         .reset-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(245, 158, 11, 0.4);
+            transform: translateY(-3px);
+            box-shadow: 0 6px 16px rgba(109, 40, 217, 0.35);
+        }
+        .expiry-note {
+            text-align: center;
+            font-size: 14px;
+            color: #718096;
+            margin-top: 20px;
+            font-weight: 500;
         }
         .link-backup {
             word-break: break-all;
             font-size: 14px;
-            color: #6b7280;
-            background: #f9fafb;
-            padding: 15px;
-            border-radius: 6px;
-            margin: 20px 0;
-            border-left: 4px solid #f59e0b;
+            color: #4a5568;
+            background: #f8fafc;
+            padding: 18px;
+            border-radius: 8px;
+            margin: 25px 0;
+            border: 1px solid #e2e8f0;
+            font-family: monospace;
         }
         .security-info {
-            background: #fffbeb;
-            border: 1px solid #fde68a;
+            background: #fff5f5;
+            border-left: 4px solid #fc8181;
             border-radius: 6px;
-            padding: 15px;
-            margin: 25px 0;
+            padding: 18px;
+            margin: 30px 0;
             font-size: 14px;
-            color: #92400e;
+            color: #c53030;
         }
         .steps {
             background: #f0f9ff;
-            border-radius: 6px;
+            border-radius: 8px;
             padding: 20px;
             margin: 25px 0;
+            border-left: 4px solid #63b3ed;
         }
         .steps h3 {
-            color: #0369a1;
+            color: #2b6cb0;
             margin-top: 0;
             margin-bottom: 15px;
             font-size: 16px;
+            font-weight: 600;
         }
         .steps ol {
             margin: 0;
             padding-left: 20px;
-            color: #6b7280;
+            color: #4a5568;
         }
         .steps li {
             margin-bottom: 8px;
         }
         .footer {
             background: #f8fafc;
-            padding: 25px 30px;
+            padding: 30px;
             text-align: center;
-            border-top: 1px solid #e5e7eb;
+            border-top: 1px solid #e2e8f0;
             font-size: 14px;
-            color: #6b7280;
+            color: #718096;
         }
         .contact {
-            margin-top: 15px;
-            font-size: 13px;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+        .social-links {
+            margin-top: 20px;
+        }
+        .social-link {
+            display: inline-block;
+            margin: 0 8px;
+            color: #6D28D9;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .pixel-grid {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 10px;
+            background-image: 
+                linear-gradient(45deg, rgba(255,255,255,0.1) 25%, transparent 25%), 
+                linear-gradient(-45deg, rgba(255,255,255,0.1) 25%, transparent 25%), 
+                linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.1) 75%), 
+                linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.1) 75%);
+            background-size: 10px 10px;
+        }
+        .icon {
+            display: inline-block;
+            margin-right: 8px;
+            vertical-align: middle;
         }
         @media (max-width: 600px) {
             .container {
                 margin: 10px;
-                border-radius: 8px;
+                border-radius: 12px;
             }
             .header, .content, .footer {
-                padding: 25px 20px;
+                padding: 35px 25px;
+            }
+            .header {
+                padding: 40px 25px 35px;
             }
         }
     </style>
@@ -148,25 +201,26 @@ export async function sendPasswordResetEmail(
 <body>
     <div class="container">
         <div class="header">
-            <div class="logo">Avante Nutri</div>
-            <div style="font-size: 24px; font-weight: 300;">Redefinição de Senha</div>
+            <div class="logo"><BRAND_NAME></div>
+            <div class="tagline">Redefinição de Senha</div>
         </div>
         
         <div class="content">
             <div class="greeting">Olá,</div>
             
             <div class="message">
-                Recebemos uma solicitação para redefinir a senha da sua conta na <strong>Avante Nutri</strong>. 
+                Recebemos uma solicitação para redefinir a senha da sua conta na <strong><BRAND_NAME></strong>. 
                 Para continuar com o processo, clique no botão abaixo:
             </div>
 
             <div class="button-container">
-                <a href="${link}" class="reset-button">Redefinir Minha Senha</a>
+                <a href="${link}" class="reset-button">
+                    <span class="icon">🔒</span> Redefinir Minha Senha
+                </a>
             </div>
 
-            <div class="message" style="text-align: center; font-size: 14px;">
-                <strong>Este link expira em 15 minutos</strong><br>
-                Por questões de segurança, o link de redefinição tem validade limitada.
+            <div class="expiry-note">
+                ⏱️ Este link expira em 15 minutos por questões de segurança
             </div>
 
             <div class="steps">
@@ -174,7 +228,6 @@ export async function sendPasswordResetEmail(
                 <ol>
                     <li>Você será direcionado para uma página segura</li>
                     <li>Poderá criar uma nova senha</li>
-                    <li>Receberá uma confirmação por e-mail</li>
                 </ol>
             </div>
 
@@ -185,7 +238,7 @@ export async function sendPasswordResetEmail(
                 a segurança da sua conta.
             </div>
 
-            <div style="font-size: 14px; color: #6b7280; margin-top: 30px;">
+            <div style="font-size: 14px; color: #4a5568; margin-top: 30px;">
                 <strong>Problemas com o botão?</strong><br>
                 Se o botão acima não funcionar, copie e cole o link abaixo em seu navegador:
             </div>
@@ -193,21 +246,25 @@ export async function sendPasswordResetEmail(
         </div>
         
         <div class="footer">
-            <div><strong>Avante Nutri</strong> - Nutrindo hábitos, transformando vidas 💚</div>
+            <div style="font-weight: 600; color: #2d3748; margin-bottom: 10px;"><BRAND_NAME> Studio Digital</div>
+            <div>Transformando ideias em experiências digitais memoráveis</div>
+            
             <div class="contact">
-                Dúvidas sobre segurança? Entre em contato: 
-                <a href="mailto:souzacawanne@gmail.com" style="color: #f59e0b; text-decoration: none;">
-                    souzacawanne@gmail.com
-                </a>
+                Dúvidas sobre segurança? <a href="mailto:atendimento<BRAND_NAME>@gmail.com" style="color: #6D28D9; text-decoration: none; font-weight: 500;">atendimento<BRAND_NAME>@gmail.com</a>
             </div>
-            <div style="margin-top: 10px; font-size: 12px;">
-                © ${new Date().getFullYear()} Avante Nutri. Todos os direitos reservados.
+            
+            <div class="social-links">
+                <a href="https://<BRAND_NAME>.com.br" class="social-link">Website</a>
+                <a href="https://instagram.com/<BRAND_NAME>" class="social-link">Instagram</a>
+            </div>
+            
+            <div style="margin-top: 20px; font-size: 12px; color: #a0aec0;">
+                © ${new Date().getFullYear()} <BRAND_NAME>. Todos os direitos reservados.
             </div>
         </div>
     </div>
 </body>
-</html>
-  `;
+</html>`;
 
   const sender = parseSender(from);
   const payload: any = {
@@ -238,5 +295,5 @@ function parseSender(from: string) {
   const m = from.match(/^(.*)<(.+@.+)>$/);
   if (m)
     return { name: m[1].trim().replace(/(^"|"$)/g, ""), email: m[2].trim() };
-  return { name: "Avante Nutri", email: from.trim() };
+  return { name: "<BRAND_NAME>", email: from.trim() };
 }

@@ -42,8 +42,6 @@ export function createApp() {
 
   // TODO: Adicionar rotas de outros domínios quando migrados:
   // app.route("/user", createUserRoutes());
-  // app.route("/diet", createDietRoutes());
-  // app.route("/water", createWaterRoutes());
   // app.route("/admin", createAdminRoutes());
 
   // Health check
@@ -53,7 +51,7 @@ export function createApp() {
 
   // 404 handler
   app.notFound((c) => {
-    return c.json({ error: "Endpoint não encontrado" }, 404);
+    return c.json({ error: "Recurso não encontrado ou não implementado" }, 404);
   });
 
   // Error handler

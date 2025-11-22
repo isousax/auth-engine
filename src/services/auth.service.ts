@@ -13,6 +13,14 @@ import {
 import { generateToken } from "../utils/generateToken";
 import { hashToken } from "../utils/hashToken";
 import { sendVerificationEmail } from "../utils/sendVerificationEmail";
+import { sendPasswordResetEmail } from "../utils/sendPasswordResetEmail";
+import {
+  revokeAccessToken,
+  revokeAllUserTokens,
+  extractJtiFromToken,
+  extractExpFromToken,
+  extractUserIdFromToken,
+} from "../service/tokenRevocation";
 
 /**
  * Resultado do login
@@ -162,14 +170,19 @@ export class AuthService {
 
     const accessToken = await generateJWT(
       {
-        userId: user.id,
+        sub: user.id,
         email: user.email,
         role: user.role,
         sessionVersion: user.session_version,
-        displayName: displayName,
       },
-      this.env.JWT_SECRET,
-      expiresIn
+      this.env.JWT_SECRET || '',
+      expiresIn,
+      {
+        privateKeyPem: this.env.JWT_PRIVATE_KEY_PEM,
+        kid: this.env.JWT_JWKS_KID || 'k1',
+        issuer: this.env.SITE_DNS,
+        audience: this.env.SITE_DNS,
+      }
     );
 
     // Gerar refresh token se remember = true
@@ -211,15 +224,46 @@ export class AuthService {
   }
 
   /**
-   * Realiza logout (invalida refresh token)
+   * Realiza logout (invalida refresh token e opcionalmente access token)
    */
-  async logout(refreshToken: string): Promise<{ success: boolean }> {
+  async logout(
+    refreshToken: string,
+    accessToken?: string
+  ): Promise<{ success: boolean }> {
     const session = await this.sessionRepo.findValidByRefreshToken(
       refreshToken
     );
 
     if (session) {
-      await this.sessionRepo.deleteById(session.id);
+      await this.sessionRepo.revokeById(session.id);
+    }
+
+    // Revogar access token se fornecido
+    if (accessToken) {
+      try {
+        const jti = extractJtiFromToken(accessToken);
+        const userId = extractUserIdFromToken(accessToken);
+        const expiresAt = extractExpFromToken(accessToken);
+
+        if (jti && userId && expiresAt) {
+          await revokeAccessToken(
+            this.env.DB,
+            jti,
+            userId,
+            expiresAt,
+            "logout"
+          );
+          console.info(
+            `[AuthService.logout] Access token revogado: ${jti}`
+          );
+        }
+      } catch (error) {
+        console.error(
+          "[AuthService.logout] Erro ao revogar access token:",
+          error
+        );
+        // Não falhar o logout se revogação falhar
+      }
     }
 
     return { success: true };
@@ -229,8 +273,16 @@ export class AuthService {
    * Força logout de todas as sessões de um usuário
    */
   async forceLogoutAll(userId: string): Promise<{ success: boolean }> {
-    await this.sessionRepo.deleteAllByUserId(userId);
+    await this.sessionRepo.revokeAllByUserId(userId);
     await this.userRepo.incrementSessionVersion(userId);
+    
+    // Registrar revogação de todos os tokens do usuário
+    await revokeAllUserTokens(
+      this.env.DB,
+      userId,
+      "force_logout_all"
+    );
+    
     return { success: true };
   }
 
@@ -281,11 +333,11 @@ export class AuthService {
       userId = existingUser.id;
       const displayName = fullName.trim().split(" ")[0];
 
-      // Atualizar senha e display_name
+      // Atualizar senha
       await this.env.DB.prepare(
-        "UPDATE users SET password_hash = ?, display_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        "UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
       )
-        .bind(passwordHash, displayName, userId)
+        .bind(passwordHash, userId)
         .run();
 
       // Atualizar perfil (delete + insert)
@@ -295,15 +347,15 @@ export class AuthService {
 
       if (birthDate) {
         await this.env.DB.prepare(
-          "INSERT INTO user_profiles (user_id, full_name, phone, birth_date) VALUES (?, ?, ?, ?)"
+          "INSERT INTO user_profiles (user_id, full_name, display_name, phone, birth_date) VALUES (?, ?, ?, ?, ?)"
         )
-          .bind(userId, fullName, phone, birthDate)
+          .bind(userId, fullName, displayName, phone, birthDate)
           .run();
       } else {
         await this.env.DB.prepare(
-          "INSERT INTO user_profiles (user_id, full_name, phone) VALUES (?, ?, ?)"
+          "INSERT INTO user_profiles (user_id, full_name, display_name, phone) VALUES (?, ?, ?, ?)"
         )
-          .bind(userId, fullName, phone)
+          .bind(userId, fullName, displayName, phone)
           .run();
       }
     } else {
@@ -325,23 +377,23 @@ export class AuthService {
 
       // Criar usuário
       await this.env.DB.prepare(
-        "INSERT INTO users (id, email, password_hash, role, display_name, email_confirmed) VALUES (?, ?, ?, ?, ?, 0)"
+        "INSERT INTO users (id, email, password_hash, role, email_confirmed) VALUES (?, ?, ?, ?, 0)"
       )
-        .bind(userId, email, passwordHash, initialRole, displayName)
+        .bind(userId, email, passwordHash, initialRole)
         .run();
 
       // Criar perfil
       if (birthDate) {
         await this.env.DB.prepare(
-          "INSERT INTO user_profiles (user_id, full_name, phone, birth_date) VALUES (?, ?, ?, ?)"
+          "INSERT INTO user_profiles (user_id, full_name, display_name, phone, birth_date) VALUES (?, ?, ?, ?, ?)"
         )
-          .bind(userId, fullName, phone, birthDate)
+          .bind(userId, fullName, displayName, phone, birthDate)
           .run();
       } else {
         await this.env.DB.prepare(
-          "INSERT INTO user_profiles (user_id, full_name, phone) VALUES (?, ?, ?)"
+          "INSERT INTO user_profiles (user_id, full_name, display_name, phone) VALUES (?, ?, ?, ?)"
         )
-          .bind(userId, fullName, phone)
+          .bind(userId, fullName, displayName, phone)
           .run();
       }
     }
@@ -353,12 +405,13 @@ export class AuthService {
 
     // Upsert token de verificação
     await this.env.DB.prepare(
-      `INSERT INTO email_verification_codes (user_id, token_hash, expires_at, used)
-       VALUES (?, ?, ?, 0)
+      `INSERT INTO email_verification_codes (user_id, token_hash, expires_at, used, last_sent_at)
+       VALUES (?, ?, ?, 0, CURRENT_TIMESTAMP)
        ON CONFLICT(user_id) DO UPDATE SET
          token_hash = excluded.token_hash,
          expires_at = excluded.expires_at,
          created_at = CURRENT_TIMESTAMP,
+         last_sent_at = CURRENT_TIMESTAMP,
          used = 0`
     )
       .bind(userId, hashedToken, expiresAt)
@@ -407,6 +460,116 @@ export class AuthService {
       success: true,
       data: { userId },
     };
+  }
+
+  /**
+   * Reenvia e-mail de verificação para usuário com e-mail não confirmado
+   */
+  async resendVerificationEmail(
+    email: string,
+    request?: Request
+  ): Promise<ServiceResult<{ message: string }>> {
+    console.info("[AuthService.resendVerificationEmail] Iniciando reenvio para:", email);
+
+    // Buscar usuário
+    const user = await this.userRepo.findByEmail(email);
+
+    if (!user) {
+      console.warn("[AuthService.resendVerificationEmail] Usuário não encontrado:", email);
+      return {
+        success: false,
+        error: {
+          message: "E-mail não encontrado em nossa base de dados.",
+          code: "USER_NOT_FOUND",
+        },
+      };
+    }
+
+    // Verificar se já confirmado
+    if (user.email_confirmed === 1) {
+      console.warn("[AuthService.resendVerificationEmail] E-mail já confirmado:", email);
+      return {
+        success: false,
+        error: {
+          message: "Este e-mail já está confirmado.",
+          code: "EMAIL_ALREADY_CONFIRMED",
+        },
+      };
+    }
+
+    // Verificar cooldown (60 segundos entre envios)
+    const COOLDOWN_SECONDS = 60;
+    const existingCode = await this.env.DB.prepare(
+      "SELECT last_sent_at FROM email_verification_codes WHERE user_id = ?"
+    )
+      .bind(user.id)
+      .first<{ last_sent_at: string }>();
+
+    if (existingCode?.last_sent_at) {
+      const lastSentAt = new Date(existingCode.last_sent_at).getTime();
+      const now = Date.now();
+      const elapsedSeconds = Math.floor((now - lastSentAt) / 1000);
+      const remainingSeconds = COOLDOWN_SECONDS - elapsedSeconds;
+
+      if (remainingSeconds > 0) {
+        console.warn(
+          `[AuthService.resendVerificationEmail] Cooldown ativo para ${email}: ${remainingSeconds}s restantes`
+        );
+        return {
+          success: false,
+          error: {
+            message: `Aguarde ${remainingSeconds} segundos antes de solicitar um novo e-mail.`,
+            code: "RATE_LIMITED",
+            retryAfterSec: remainingSeconds,
+          },
+        };
+      }
+    }
+
+    // Gerar novo token de verificação
+    const plainToken = await generateToken();
+    const hashedToken = await hashToken(plainToken);
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 min
+
+    // Atualizar token de verificação e registrar envio
+    await this.env.DB.prepare(
+      `INSERT INTO email_verification_codes (user_id, token_hash, expires_at, used, last_sent_at)
+       VALUES (?, ?, ?, 0, CURRENT_TIMESTAMP)
+       ON CONFLICT(user_id) DO UPDATE SET
+         token_hash = excluded.token_hash,
+         expires_at = excluded.expires_at,
+         created_at = CURRENT_TIMESTAMP,
+         last_sent_at = CURRENT_TIMESTAMP,
+         used = 0`
+    )
+      .bind(user.id, hashedToken, expiresAt)
+      .run();
+
+    // Montar link de verificação e enviar email
+    const base = this.env.SITE_DNS || "http://localhost:8787";
+    const link = `${base}/confirm-email?token=${encodeURIComponent(plainToken)}`;
+
+    try {
+      await sendVerificationEmail(this.env, email, link);
+      console.info("[AuthService.resendVerificationEmail] E-mail reenviado com sucesso para:", email);
+
+      return {
+        success: true,
+        data: {
+          message: "E-mail de verificação reenviado com sucesso. Verifique sua caixa de entrada.",
+        },
+      };
+    } catch (error) {
+      console.error("[AuthService.resendVerificationEmail] Erro ao enviar e-mail:", error);
+
+      return {
+        success: false,
+        error: {
+          message: "Não foi possível enviar o e-mail de verificação. Por favor, tente novamente mais tarde.",
+          code: "EMAIL_SEND_FAILED",
+        },
+      };
+    }
   }
 
   /**
@@ -467,24 +630,57 @@ export class AuthService {
 
     const accessToken = await generateJWT(
       {
-        userId: user.id,
+        sub: user.id,
         email: user.email,
         role: user.role,
         sessionVersion: user.session_version,
-        displayName: user.display_name || user.email.split("@")[0],
       },
-      this.env.JWT_SECRET,
-      expiresIn
+      this.env.JWT_SECRET || '',
+      expiresIn,
+      {
+        privateKeyPem: this.env.JWT_PRIVATE_KEY_PEM,
+        kid: this.env.JWT_JWKS_KID || 'k1',
+        issuer: this.env.SITE_DNS,
+        audience: this.env.SITE_DNS,
+      }
     );
 
-    // Rotacionar refresh token (opcional - comentado para manter compatibilidade)
-    // const newRefreshToken = await rotateSession(this.env.DB, session.id, refreshToken);
+    // Rotacionar refresh token para maior segurança
+    const newRefreshToken = await generateRefreshToken();
+    const refreshDays = this.env.REFRESH_TOKEN_EXPIRATION_DAYS
+      ? Number(this.env.REFRESH_TOKEN_EXPIRATION_DAYS)
+      : 30;
+    const newExpiresAt = new Date(
+      Date.now() + refreshDays * 24 * 60 * 60 * 1000
+    ).toISOString();
+
+    try {
+      await rotateSession(
+        this.env.DB,
+        session.id,
+        refreshToken,
+        newRefreshToken,
+        newExpiresAt
+      );
+    } catch (error) {
+      // Se houver conflito otimista, outro refresh já rotacionou
+      if ((error as any).code === "SESSION_CONFLICT") {
+        return {
+          success: false,
+          error: {
+            message: "Sessão foi atualizada por outra requisição. Tente novamente.",
+            code: "SESSION_CONFLICT",
+          },
+        };
+      }
+      throw error;
+    }
 
     return {
       success: true,
       data: {
         access_token: accessToken,
-        // refresh_token: newRefreshToken, // Se implementar rotação
+        refresh_token: newRefreshToken,
         token_type: "Bearer",
         expires_in: expiresIn,
         user: {
@@ -515,19 +711,65 @@ export class AuthService {
       };
     }
 
+    // Verificar cooldown (60 segundos entre envios)
+    const COOLDOWN_SECONDS = 60;
+    const existingToken = await this.env.DB.prepare(
+      "SELECT last_sent_at FROM password_reset_tokens WHERE user_id = ?"
+    )
+      .bind(user.id)
+      .first<{ last_sent_at: string }>();
+
+    if (existingToken?.last_sent_at) {
+      const lastSentAt = new Date(existingToken.last_sent_at).getTime();
+      const now = Date.now();
+      const elapsedSeconds = Math.floor((now - lastSentAt) / 1000);
+      const remainingSeconds = COOLDOWN_SECONDS - elapsedSeconds;
+
+      if (remainingSeconds > 0) {
+        console.warn(
+          `[AuthService.requestPasswordReset] Cooldown ativo para ${email}: ${remainingSeconds}s restantes`
+        );
+        // Retorna sucesso para não vazar informação de usuários
+        return {
+          success: true,
+          data: {
+            message:
+              "Se o e-mail estiver cadastrado, você receberá instruções para redefinir sua senha.",
+          },
+        };
+      }
+    }
+
     // Gerar token de reset
     const plainToken = await generateToken();
     const hashedToken = await hashToken(plainToken);
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 min
 
+    // Upsert: substitui token anterior se existir e registra envio
     await this.env.DB.prepare(
-      `INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, ?)`
+      `INSERT INTO password_reset_tokens (user_id, token, expires_at, used, last_sent_at)
+       VALUES (?, ?, ?, 0, CURRENT_TIMESTAMP)
+       ON CONFLICT(user_id) DO UPDATE SET
+         token = excluded.token,
+         expires_at = excluded.expires_at,
+         created_at = CURRENT_TIMESTAMP,
+         last_sent_at = CURRENT_TIMESTAMP,
+         used = 0`
     )
       .bind(user.id, hashedToken, expiresAt)
       .run();
 
-    // Enviar email (implementar)
-    // await sendPasswordResetEmail(this.env, email, plainToken);
+    // Montar link de reset e enviar e-mail
+    const base = this.env.SITE_DNS || "http://localhost:8787";
+    const link = `${base}/reset-password?token=${encodeURIComponent(plainToken)}`;
+    
+    try {
+      await sendPasswordResetEmail(this.env, email, link);
+      console.info("[AuthService.requestPasswordReset] E-mail de reset enviado para:", email);
+    } catch (error) {
+      console.error("[AuthService.requestPasswordReset] Erro ao enviar e-mail:", error);
+      // Não falha a requisição para não vazar informação de usuários existentes
+    }
 
     return {
       success: true,
@@ -568,6 +810,13 @@ export class AuthService {
     const passwordHash = await hashPassword(newPassword);
     await this.userRepo.updatePassword(tokenRow.user_id, passwordHash);
 
+    // Registrar troca de senha no log
+    await this.env.DB.prepare(
+      "INSERT INTO password_change_log (user_id, changed_at) VALUES (?, CURRENT_TIMESTAMP)"
+    )
+      .bind(tokenRow.user_id)
+      .run();
+
     // Invalidar token
     await this.env.DB.prepare(
       `DELETE FROM password_reset_tokens WHERE token = ?`
@@ -575,13 +824,13 @@ export class AuthService {
       .bind(hashedToken)
       .run();
 
-    // Invalidar todas as sessões
+    // Invalidar todas as sessões e revogar tokens
     await this.forceLogoutAll(tokenRow.user_id);
 
     return {
       success: true,
       data: {
-        message: "Senha alterada com sucesso.",
+        message: "Senha alterada com sucesso. Faça login novamente.",
       },
     };
   }
@@ -626,13 +875,20 @@ export class AuthService {
     const passwordHash = await hashPassword(newPassword);
     await this.userRepo.updatePassword(userId, passwordHash);
 
-    // Invalidar todas as sessões
+    // Registrar troca de senha no log
+    await this.env.DB.prepare(
+      "INSERT INTO password_change_log (user_id, changed_at) VALUES (?, CURRENT_TIMESTAMP)"
+    )
+      .bind(userId)
+      .run();
+
+    // Invalidar todas as sessões e revogar tokens
     await this.forceLogoutAll(userId);
 
     return {
       success: true,
       data: {
-        message: "Senha alterada com sucesso.",
+        message: "Senha alterada com sucesso. Faça login novamente.",
       },
     };
   }

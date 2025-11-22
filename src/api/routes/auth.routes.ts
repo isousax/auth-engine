@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import type { Env } from "../../types/Env";
 import { AuthController } from "../../controllers/auth.controller";
 import { jwksHandler } from "../../utils/jwks";
 import { requireAuth, getAuthUser, type AppContext } from "../../middleware/auth";
@@ -69,6 +68,12 @@ export function createAuthRoutes() {
   router.post("/confirm-verification", async (c) => {
     const controller = new AuthController(c.env);
     return controller.confirmVerification(c.req.raw);
+  });
+
+  // POST /auth/resend-verification (rate limited)
+  router.post("/resend-verification", authRateLimit, async (c) => {
+    const controller = new AuthController(c.env);
+    return controller.resendVerification(c.req.raw);
   });
 
   return router;

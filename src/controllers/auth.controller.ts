@@ -7,9 +7,8 @@ import {
   resetPasswordSchema,
   changePasswordSchema,
   refreshTokenSchema,
+  logoutSchema,
   confirmVerificationTokenSchema,
-  type LoginInput,
-  type RefreshTokenInput,
 } from "../validators/auth.validators";
 import { normalizePhone, phoneErrorMessage } from "../utils/normalizePhone";
 import { verifyAccessToken } from "../service/tokenVerify";
@@ -74,9 +73,11 @@ export class AuthController {
 
     const { email, password, remember } = validation.data;
 
-    // Verificar configuração
-    if (!this.env.JWT_SECRET) {
-      console.error("[AuthController.login] JWT_SECRET ausente no ambiente");
+    // Verificar configuração: precisa de JWT_SECRET OU JWT_PRIVATE_KEY_PEM
+    if (!this.env.JWT_SECRET && !this.env.JWT_PRIVATE_KEY_PEM) {
+      console.error(
+        "[AuthController.login] JWT_SECRET ou JWT_PRIVATE_KEY_PEM ausente no ambiente"
+      );
       return jsonResponse(
         {
           error:
@@ -87,7 +88,12 @@ export class AuthController {
     }
 
     // Chamar service
-    const result = await this.authService.login(email, password, remember, request);
+    const result = await this.authService.login(
+      email,
+      password,
+      remember,
+      request
+    );
 
     if (!result.success) {
       const statusCode =
@@ -126,7 +132,7 @@ export class AuthController {
       );
     }
 
-    const validation = refreshTokenSchema.safeParse(body);
+    const validation = logoutSchema.safeParse(body);
     if (!validation.success) {
       const firstError = validation.error.errors[0];
       return jsonResponse(
@@ -135,9 +141,9 @@ export class AuthController {
       );
     }
 
-    const { refresh_token } = validation.data;
+    const { refresh_token, access_token } = validation.data;
 
-    await this.authService.logout(refresh_token);
+    await this.authService.logout(refresh_token, access_token);
 
     return jsonResponse({ message: "Logout realizado com sucesso." }, 200);
   }
@@ -200,10 +206,7 @@ export class AuthController {
     // Normalizar telefone
     const phoneNorm = normalizePhone(phone, "BR");
     if (!phoneNorm.ok || !phoneNorm.normalized) {
-      return jsonResponse(
-        { error: phoneErrorMessage(phoneNorm.reason) },
-        400
-      );
+      return jsonResponse({ error: phoneErrorMessage(phoneNorm.reason) }, 400);
     }
 
     const result = await this.authService.register(
@@ -217,13 +220,23 @@ export class AuthController {
 
     if (!result.success) {
       const statusCode =
-        result.error?.code === "EMAIL_ALREADY_EXISTS" ? 409 : 
-        result.error?.code === "EMAIL_SEND_FAILED" ? 500 : 400;
+        result.error?.code === "EMAIL_ALREADY_EXISTS"
+          ? 409
+          : result.error?.code === "EMAIL_SEND_FAILED"
+          ? 500
+          : 400;
 
       return jsonResponse({ error: result.error?.message }, statusCode);
     }
 
-    return jsonResponse({ ok: true, user_id: result.data?.userId }, 201);
+    return jsonResponse(
+      {
+        ok: true,
+        message: "Conta criada com sucesso. Verifique seu e-mail.",
+        user_id: result.data?.userId,
+      },
+      201
+    );
   }
 
   /**
@@ -327,10 +340,7 @@ export class AuthController {
       return jsonResponse({ error: result.error?.message }, statusCode);
     }
 
-    return jsonResponse(
-      { ok: true, message: result.data?.message },
-      200
-    );
+    return jsonResponse({ ok: true, message: result.data?.message }, 200);
   }
 
   /**
@@ -372,6 +382,58 @@ export class AuthController {
   }
 
   /**
+   * POST /auth/resend-verification
+   */
+  async resendVerification(request: Request): Promise<Response> {
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch (err) {
+      return jsonResponse(
+        { error: "O corpo da requisição não está em formato JSON válido." },
+        400
+      );
+    }
+
+    const validation = requestPasswordResetSchema.safeParse(body);
+    if (!validation.success) {
+      return jsonResponse({ error: "E-mail inválido." }, 400);
+    }
+
+    const { email } = validation.data;
+
+    const result = await this.authService.resendVerificationEmail(
+      email,
+      request
+    );
+
+    if (!result.success) {
+      // Se for rate limit, adicionar header Retry-After
+      if (result.error?.code === "RATE_LIMITED" && result.error.retryAfterSec) {
+        return new Response(JSON.stringify({ error: result.error.message }), {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "Retry-After": result.error.retryAfterSec.toString(),
+          },
+        });
+      }
+
+      const statusCode =
+        result.error?.code === "EMAIL_ALREADY_CONFIRMED" ? 400 : 500;
+      return jsonResponse({ error: result.error?.message }, statusCode);
+    }
+
+    return jsonResponse(
+      {
+        ok: true,
+        message: result.data?.message,
+      },
+      200
+    );
+  }
+
+  /**
    * POST /auth/introspect
    * Valida um access token JWT e retorna suas claims
    */
@@ -387,10 +449,14 @@ export class AuthController {
     }
 
     // Verificar token
-    const { valid, payload, reason } = await verifyAccessToken(this.env, token, {
-      issuer: this.env.SITE_DNS,
-      audience: this.env.SITE_DNS,
-    });
+    const { valid, payload, reason } = await verifyAccessToken(
+      this.env,
+      token,
+      {
+        issuer: this.env.SITE_DNS,
+        audience: this.env.SITE_DNS,
+      }
+    );
 
     if (!valid || !payload) {
       return jsonResponse(
@@ -415,7 +481,7 @@ export class AuthController {
 
     // 2. Tentar extrair do body
     try {
-      const body = await request.clone().json() as IntrospectionRequest;
+      const body = (await request.clone().json()) as IntrospectionRequest;
       if (typeof body.token === "string") {
         return body.token.trim() || null;
       }

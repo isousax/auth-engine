@@ -1,6 +1,7 @@
 export function getDynamicCorsOrigin(origin: string | null): string {
   const allowedOrigins = [
-    "https://dns.com.br",
+    "https://<BRAND_NAME>.com.br",
+    "https://app.<BRAND_NAME>.com.br",
   ];
 
   if (origin && allowedOrigins.includes(origin)) {

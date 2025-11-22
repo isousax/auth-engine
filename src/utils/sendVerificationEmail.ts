@@ -18,7 +18,7 @@ export async function sendVerificationEmail(
 
   if (!from || typeof from !== "string") {
     throw new Error(
-      'EMAIL_FROM não configurado (ex: "Avante Nutri <no-reply@avantenutri.com>").'
+      'EMAIL_FROM não configurado (ex: "<BRAND_NAME> <no-reply@<BRAND_NAME>.com.br>").'
     );
   }
 
@@ -28,53 +28,64 @@ export async function sendVerificationEmail(
 
   console.info("[sendVerificationEmail] preparando e-mail para envio");
 
-  const subject = "Confirme seu e-mail - Avante Nutri";
-  const html = `
-<!DOCTYPE html>
+  const subject = "Confirme seu e-mail - <BRAND_NAME>";
+  const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Confirmação de E-mail</title>
+    <title>Confirmação de E-mail - <BRAND_NAME></title>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             line-height: 1.6;
-            color: #333;
+            color: #1a202c;
             margin: 0;
             padding: 0;
-            background-color: #f8fafc;
+            background-color: #f7fafc;
         }
         .container {
             max-width: 600px;
             margin: 0 auto;
             background: #ffffff;
-            border-radius: 12px;
+            border-radius: 16px;
             overflow: hidden;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
         }
         .header {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-            padding: 40px 30px;
+            background: linear-gradient(135deg, #6D28D9 0%, #4C1D95 100%);
+            padding: 30px 40px;
             text-align: center;
             color: white;
+            position: relative;
         }
         .logo {
-            font-size: 28px;
-            font-weight: bold;
-            margin-bottom: 10px;
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 15px;
+            letter-spacing: -0.5px;
+        }
+        .tagline {
+            font-size: 16px;
+            font-weight: 400;
+            opacity: 0.9;
+            max-width: 400px;
+            margin: 0 auto;
         }
         .content {
-            padding: 40px 30px;
+            padding: 45px 35px;
         }
         .greeting {
-            font-size: 18px;
-            margin-bottom: 20px;
-            color: #374151;
+            font-size: 20px;
+            margin-bottom: 25px;
+            color: #2d3748;
+            font-weight: 600;
         }
         .message {
             font-size: 16px;
-            color: #6b7280;
+            color: #4a5568;
             margin-bottom: 30px;
         }
         .button-container {
@@ -83,58 +94,85 @@ export async function sendVerificationEmail(
         }
         .confirm-button {
             display: inline-block;
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            background: linear-gradient(135deg, #6D28D9 0%, #4C1D95 100%);
             color: white;
             text-decoration: none;
-            padding: 16px 32px;
-            border-radius: 8px;
+            padding: 18px 40px;
+            border-radius: 10px;
             font-weight: 600;
             font-size: 16px;
             transition: all 0.3s ease;
-            box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+            box-shadow: 0 4px 12px rgba(109, 40, 217, 0.25);
+            letter-spacing: 0.5px;
         }
         .confirm-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(16, 185, 129, 0.4);
+            transform: translateY(-3px);
+            box-shadow: 0 6px 16px rgba(109, 40, 217, 0.35);
+        }
+        .expiry-note {
+            text-align: center;
+            font-size: 14px;
+            color: #718096;
+            margin-top: 20px;
+            font-weight: 500;
         }
         .link-backup {
             word-break: break-all;
             font-size: 14px;
-            color: #6b7280;
-            background: #f9fafb;
-            padding: 15px;
-            border-radius: 6px;
-            margin: 20px 0;
-            border-left: 4px solid #10b981;
-        }
-        .warning {
-            background: #fef3cd;
-            border: 1px solid #fde68a;
-            border-radius: 6px;
-            padding: 15px;
+            color: #4a5568;
+            background: #f8fafc;
+            padding: 18px;
+            border-radius: 8px;
             margin: 25px 0;
+            border: 1px solid #e2e8f0;
+            font-family: monospace;
+        }
+        .security-note {
+            background: #fff5f5;
+            border-left: 4px solid #fc8181;
+            border-radius: 6px;
+            padding: 18px;
+            margin: 30px 0;
             font-size: 14px;
-            color: #92400e;
+            color: #c53030;
         }
         .footer {
             background: #f8fafc;
-            padding: 25px 30px;
+            padding: 30px;
             text-align: center;
-            border-top: 1px solid #e5e7eb;
+            border-top: 1px solid #e2e8f0;
             font-size: 14px;
-            color: #6b7280;
+            color: #718096;
         }
         .contact {
-            margin-top: 15px;
-            font-size: 13px;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+        .social-links {
+            margin-top: 20px;
+        }
+        .social-link {
+            display: inline-block;
+            margin: 0 8px;
+            color: #6D28D9;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .icon {
+            display: inline-block;
+            margin-right: 8px;
+            vertical-align: middle;
         }
         @media (max-width: 600px) {
             .container {
                 margin: 10px;
-                border-radius: 8px;
+                border-radius: 12px;
             }
             .header, .content, .footer {
-                padding: 25px 20px;
+                padding: 35px 25px;
+            }
+            .header {
+                padding: 40px 25px 35px;
             }
         }
     </style>
@@ -142,57 +180,61 @@ export async function sendVerificationEmail(
 <body>
     <div class="container">
         <div class="header">
-            <div class="logo">Avante Nutri</div>
-            <div style="font-size: 22px; font-weight: 300;">Confirme seu e-mail</div>
+            <div class="logo"><BRAND_NAME></div>
+            <div class="tagline">Confirme seu e-mail</div>
         </div>
         
         <div class="content">
-            <div class="greeting">Olá,</div>
+            <div class="greeting">Olá, futuro parceiro(a)!</div>
             
             <div class="message">
-                Bem-vindo(a) à <strong>Avante Nutri</strong>! 🌱<br>
-                Pequenas mudanças geram grandes transformações — e o primeiro passo já foi dado.<br>
-                Confirme seu e-mail e vamos avançar juntos.
+                Estamos empolgados em tê-lo(a) conosco! Sua presença digital está prestes a ganhar vida.<br><br>
+                Para ativar sua conta, confirme seu e-mail abaixo.
             </div>
 
             <div class="button-container">
-                <a href="${link}" class="confirm-button" target="_blank">Confirmar E-mail</a>
+                <a href="${link}" class="confirm-button">
+                    <span class="icon">✓</span> Confirmar E-mail
+                </a>
             </div>
 
-            <div class="message" style="text-align: center; font-size: 15px;">
-                <strong>Este link expira em 15 minutos</strong><br>
-                Por questões de segurança, o link de confirmação tem validade limitada.
+            <div class="expiry-note">
+                ⏱️ Este link expira em 15 minutos por questões de segurança
             </div>
 
-            <div class="warning">
-                <strong>⚠️ Não foi você?</strong><br>
-                Se você não se cadastrou na Avante Nutri, ignore esta mensagem. 
-                Seu e-mail será automaticamente removido de nossos registros.
+            <div class="security-note">
+                <strong>Não reconhece este cadastro?</strong><br>
+                Se você não solicitou a criação de uma conta na <BRAND_NAME>, ignore este e-mail. 
+                Suas informações serão removidas automaticamente de nossos sistemas.
             </div>
 
-            <div style="font-size: 14px; color: #6b7280; margin-top: 30px;">
-                <strong>Problemas com o botão?</strong><br>
+            <div style="font-size: 14px; color: #4a5568; margin-top: 30px;">
+                <strong>Problemas para clicar no botão?</strong><br>
                 Copie e cole o link abaixo em seu navegador:
             </div>
             <div class="link-backup">${link}</div>
         </div>
         
         <div class="footer">
-            <div><strong>Avante Nutri</strong> - Nutrindo hábitos, transformando vidas 💚</div>
+            <div style="font-weight: 600; color: #2d3748; margin-bottom: 10px;"><BRAND_NAME> Studio Digital</div>
+            <div>Transformando ideias em experiências digitais memoráveis</div>
+            
             <div class="contact">
-                Dúvidas? Entre em contato: 
-                <a href="mailto:souzacawanne@gmail.com" style="color: #10b981; text-decoration: none;">
-                    souzacawanne@gmail.com
-                </a>
+                Precisa de ajuda? <a href="mailto:atendimento<BRAND_NAME>@gmail.com" style="color: #6D28D9; text-decoration: none; font-weight: 500;">atendimento<BRAND_NAME>@gmail.com</a>
             </div>
-            <div style="margin-top: 10px; font-size: 12px;">
-                © ${new Date().getFullYear()} Avante Nutri. Todos os direitos reservados.
+            
+            <div class="social-links">
+                <a href="https://<BRAND_NAME>.com.br" class="social-link">Website</a>
+                <a href="https://instagram.com/<BRAND_NAME>" class="social-link">Instagram</a>
+            </div>
+            
+            <div style="margin-top: 20px; font-size: 12px; color: #a0aec0;">
+                © ${new Date().getFullYear()} <BRAND_NAME>. Todos os direitos reservados.
             </div>
         </div>
     </div>
 </body>
-</html>
-  `;
+</html>`;
 
   const sender = parseSender(from);
   const payload: any = {
@@ -249,5 +291,5 @@ function parseSender(from: string) {
   const m = from.match(/^(.*)<(.+@.+)>$/);
   if (m)
     return { name: m[1].trim().replace(/(^"|"$)/g, ""), email: m[2].trim() };
-  return { name: "Avante Nutri", email: from.trim() };
+  return { name: "<BRAND_NAME>", email: from.trim() };
 }
